@@ -12,8 +12,8 @@ import (
 )
 
 type SubstringCircuit struct {
-	Str1 [3]frontend.Variable   `gnark:"str1,secret"`
-	Str2 [100]frontend.Variable `gnark:"str2,public"`
+	Str1 [500]frontend.Variable  `gnark:"str1,secret"`
+	Str2 [2000]frontend.Variable `gnark:"str2,public"`
 }
 
 func (circuit *SubstringCircuit) Define(api frontend.API) error {
@@ -96,6 +96,14 @@ func generateString(N int) []frontend.Variable {
 		frontend.Variable(99),  // 'c'
 		frontend.Variable(120), // 'x'
 		frontend.Variable(120), // 'x'
+		frontend.Variable(120), // 'x'
+		frontend.Variable(120), // 'x'
+		frontend.Variable(97),  // 'a'
+		frontend.Variable(98),  // 'b'
+		frontend.Variable(99),  // 'c'
+		frontend.Variable(120), // 'x'
+		frontend.Variable(120), // 'x'
+
 	}
 
 	result := make([]frontend.Variable, 0, N)
@@ -109,21 +117,24 @@ func generateString(N int) []frontend.Variable {
 	return result
 }
 
-func convertToFixedSizeArray100(s []frontend.Variable) [100]frontend.Variable {
-	var arr [100]frontend.Variable
+func convertToFixedSizeArray2000(s []frontend.Variable) [2000]frontend.Variable {
+	var arr [2000]frontend.Variable
+	copy(arr[:], s) // Copy elements from the slice to the array
+	return arr
+}
+
+func convertToFixedSizeArray500(s []frontend.Variable) [500]frontend.Variable {
+	var arr [500]frontend.Variable
 	copy(arr[:], s) // Copy elements from the slice to the array
 	return arr
 }
 
 func main() {
-	str1 := [3]frontend.Variable{
-		frontend.Variable(97), // 'a'
-		frontend.Variable(98), // 'b'
-		frontend.Variable(99), // 'c'
-	}
+	str1s := generateString(500)
+	str1 := convertToFixedSizeArray500(str1s)
 
-	str2s := generateString(100)
-	str2 := convertToFixedSizeArray100(str2s)
+	str2s := generateString(2000)
+	str2 := convertToFixedSizeArray2000(str2s)
 
 	var circuit SubstringCircuit
 	fmt.Println("Compiling circuit...")
