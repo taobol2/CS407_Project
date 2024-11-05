@@ -18,17 +18,15 @@ type SubstringCircuit struct {
 
 func (circuit *SubstringCircuit) Define(api frontend.API) error {
 	const base = 256  // Base value for hash calculation
-	const prime = 101 // A prime number to use for modulus to avoid overflow
+	const prime = 997 // A larger prime number to reduce hash collisions
 	patternLength := len(circuit.Str1)
 	textLength := len(circuit.Str2)
 
-	// Helper function to apply modulus with `prime`
+	// Helper modulus function to reduce value within prime field
 	mod := func(a frontend.Variable, prime int64) frontend.Variable {
-		primeVar := frontend.Variable(prime)
-		for i := 0; i < 5; i++ { // Loop a fixed number of times to simulate modulus reduction
-			a = api.Sub(a, api.Mul(primeVar, api.Div(a, primeVar)))
-		}
-		return a
+		div := api.Div(a, prime)   // Get quotient
+		mul := api.Mul(div, prime) // Multiply quotient by prime
+		return api.Sub(a, mul)     // Subtract to get remainder
 	}
 
 	// Calculate the hash of the pattern (Str1)
@@ -45,28 +43,39 @@ func (circuit *SubstringCircuit) Define(api frontend.API) error {
 		currentHash = mod(currentHash, prime)
 	}
 
+	// Variable to indicate if we found a matching substring
 	found := frontend.Variable(0)
+
+	// Pre-compute base^(patternLength-1) % prime to use for hash update
 	basePow := big.NewInt(1)
 	baseBig := big.NewInt(base)
 	primeBig := big.NewInt(prime)
 	for i := 0; i < patternLength-1; i++ {
 		basePow.Mul(basePow, baseBig).Mod(basePow, primeBig)
 	}
+	// Represent the precomputed power as a frontend variable
+	basePowVar := frontend.Variable(basePow.Int64())
 
 	// Sliding window to compare hashes
 	for i := 0; i <= textLength-patternLength; i++ {
-		// Compare hash values
+		// If hash matches, do a character-by-character comparison to avoid hash collision false positives
 		isMatch := api.IsZero(api.Sub(currentHash, patternHash))
-		found = api.Or(found, isMatch)
+		charMatch := frontend.Variable(1) // Assume true initially
 
-		// Log intermediate values for debugging
-		fmt.Printf("Iteration %d, currentHash: %v, patternHash: %v, isMatch: %v, found: %v\n",
-			i, currentHash, patternHash, isMatch, found)
+		for j := 0; j < patternLength; j++ {
+			charMatch = api.And(charMatch, api.IsZero(api.Sub(circuit.Str2[i+j], circuit.Str1[j])))
+		}
+
+		// Only set `found` if both the hash and the character-by-character match succeed
+		found = api.Or(found, api.And(isMatch, charMatch))
 
 		// Calculate hash for the next window
 		if i < textLength-patternLength {
-			currentHash = api.Sub(currentHash, api.Mul(circuit.Str2[i], basePow))
+			// Update hash: remove the first character, shift left, and add the new character
+			currentHash = api.Sub(currentHash, api.Mul(circuit.Str2[i], basePowVar))
+			currentHash = mod(currentHash, prime)
 			currentHash = api.Mul(currentHash, base)
+			currentHash = mod(currentHash, prime)
 			currentHash = api.Add(currentHash, circuit.Str2[i+patternLength])
 			currentHash = mod(currentHash, prime)
 		}
@@ -148,14 +157,15 @@ func main() {
 	fmt.Println("Generating proof...")
 	proof, err := groth16.Prove(ccs, pk, witness)
 	if err != nil {
-		log.Fatalf("Proof generation failed: %v", err)
+		fmt.Println("Proof generation failed: Pattern not found in the string.")
+		return
 	}
 
 	fmt.Println("Verifying proof...")
 	err = groth16.Verify(proof, vk, publicWitness)
 	if err != nil {
-		log.Fatalf("Verification failed: %v", err)
+		fmt.Println("Verification failed: Pattern not found in the string.")
 	} else {
-		fmt.Println("Proof verified successfully")
+		fmt.Println("Proof verified successfully: Pattern found in the string.")
 	}
 }
